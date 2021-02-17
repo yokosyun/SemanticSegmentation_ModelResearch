@@ -197,11 +197,16 @@ def train():
 
             predicted_tensor = model(input_tensor)
 
-            save_image(input_tensor / torch.max(input_tensor), "input_tensor.png")
             save_image(
-                predicted_tensor.max(1)[1].unsqueeze(1).float(), "predicted_tensor.png"
+                input_tensor / torch.max(input_tensor), "result/train/input_tensor.png"
             )
-            save_image(target_tensor.unsqueeze(1).float(), "target_tensor.png")
+            save_image(
+                predicted_tensor.max(1)[1].unsqueeze(1).float(),
+                "result/train/predicted_tensor.png",
+            )
+            save_image(
+                target_tensor.unsqueeze(1).float(), "result/train/target_tensor.png"
+            )
 
             if args.save_segmentation:
                 softmaxed_tensor = F.softmax(predicted_tensor, dim=1)
