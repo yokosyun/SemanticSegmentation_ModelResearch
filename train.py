@@ -15,7 +15,9 @@ from models.segnet import SegNet
 from models.pspnet import PSPNet
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
-
+from torchvision import transforms
+import numpy as np
+from PIL import Image
 
 writer_train = SummaryWriter(log_dir="./logs/train")
 writer_test = SummaryWriter(log_dir="./logs/test")
@@ -47,132 +49,52 @@ parser.add_argument("--save_segmentation", type=bool, default=False)
 args = parser.parse_args()
 
 
-def color_map(indices_image):
-    batch_size = indices_image.size()[0]
-    rows = indices_image.size()[1]
-    cols = indices_image.size()[2]
-    final_out = torch.empty(3, rows, cols)
-    for batch in range(batch_size):
-        result = torch.zeros(3, rows, cols)
-        for row in range(rows):
-            for col in range(cols):
-                if indices_image[batch, row, col] == 0:
-                    result[0, row, col] = 0
-                    result[1, row, col] = 0
-                    result[2, row, col] = 0
+import matplotlib.pyplot as plt
 
-                elif indices_image[batch, row, col] == 1:
-                    result[0, row, col] = 128
-                    result[1, row, col] = 0
-                    result[2, row, col] = 0
 
-                elif indices_image[batch, row, col] == 2:
-                    result[0, row, col] = 0
-                    result[1, row, col] = 128
-                    result[2, row, col] = 0
+def class_color(id, prob):
+    _hsv = list(hsv[id])
+    # _hsv[2]=random.uniform(0.8, 1)
+    _hsv[2] = prob
+    color = colorsys.hsv_to_rgb(*_hsv)
+    return color
 
-                elif indices_image[batch, row, col] == 3:
-                    result[0, row, col] = 128
-                    result[1, row, col] = 128
-                    result[2, row, col] = 0
 
-                elif indices_image[batch, row, col] == 4:
-                    result[0, row, col] = 0
-                    result[1, row, col] = 0
-                    result[2, row, col] = 128
+def apply_mask(image, mask, color, alpha=0.5):
+    """Apply the given mask to the image."""
+    for c in range(3):
+        image[:, :, c] = np.where(
+            mask == True,
+            image[:, :, c] * (1 - alpha) + alpha * color[c] * 255,
+            image[:, :, c],
+        )
+    return image
 
-                elif indices_image[batch, row, col] == 5:
-                    result[0, row, col] = 128
-                    result[1, row, col] = 0
-                    result[2, row, col] = 128
 
-                elif indices_image[batch, row, col] == 6:
-                    result[0, row, col] = 0
-                    result[1, row, col] = 128
-                    result[2, row, col] = 128
+def visualize_segmentation(input_tensor, predicted_tensor):
+    image = input_tensor.cpu()
+    image = torch.squeeze(image)
+    image = transforms.ToPILImage()(image).convert("RGB")
+    image = np.array(image)
 
-                elif indices_image[batch, row, col] == 7:
-                    result[0, row, col] = 128
-                    result[1, row, col] = 128
-                    result[2, row, col] = 128
+    masks = predicted_tensor.max(1)[1].squeeze(1)
+    masks = masks.cpu()
+    masks = torch.squeeze(masks)
+    masks = masks.numpy().copy()
+    masks = np.array(masks)
 
-                elif indices_image[batch, row, col] == 8:
-                    result[0, row, col] = 64
-                    result[1, row, col] = 0
-                    result[2, row, col] = 0
+    masked_image = image.copy()
+    for i in range(NUM_CLASSES):
+        class_id = i
+        color = np.random.rand(3)
+        mask = masks[:, :] == i
+        masked_image = apply_mask(masked_image, mask, color)
 
-                elif indices_image[batch, row, col] == 9:
-                    result[0, row, col] = 192
-                    result[1, row, col] = 0
-                    result[2, row, col] = 0
-
-                elif indices_image[batch, row, col] == 10:
-                    result[0, row, col] = 64
-                    result[1, row, col] = 128
-                    result[2, row, col] = 0
-
-                elif indices_image[batch, row, col] == 11:
-                    result[0, row, col] = 192
-                    result[1, row, col] = 128
-                    result[2, row, col] = 0
-
-                elif indices_image[batch, row, col] == 12:
-                    result[0, row, col] = 64
-                    result[1, row, col] = 0
-                    result[2, row, col] = 128
-
-                elif indices_image[batch, row, col] == 13:
-                    result[0, row, col] = 192
-                    result[1, row, col] = 0
-                    result[2, row, col] = 128
-
-                elif indices_image[batch, row, col] == 14:
-                    result[0, row, col] = 64
-                    result[1, row, col] = 128
-                    result[2, row, col] = 128
-
-                elif indices_image[batch, row, col] == 15:
-                    result[0, row, col] = 192
-                    result[1, row, col] = 128
-                    result[2, row, col] = 128
-
-                elif indices_image[batch, row, col] == 16:
-                    result[0, row, col] = 0
-                    result[1, row, col] = 64
-                    result[2, row, col] = 0
-
-                elif indices_image[batch, row, col] == 17:
-                    result[0, row, col] = 128
-                    result[1, row, col] = 64
-                    result[2, row, col] = 0
-
-                elif indices_image[batch, row, col] == 18:
-                    result[0, row, col] = 0
-                    result[1, row, col] = 192
-                    result[2, row, col] = 0
-
-                elif indices_image[batch, row, col] == 19:
-                    result[0, row, col] = 128
-                    result[1, row, col] = 192
-                    result[2, row, col] = 0
-
-                elif indices_image[batch, row, col] == 20:
-                    result[0, row, col] = 0
-                    result[1, row, col] = 64
-                    result[2, row, col] = 128
-
-                elif indices_image[batch, row, col] == 21:
-                    result[0, row, col] = 128
-                    result[1, row, col] = 64
-                    result[2, row, col] = 128
-
-        if batch == 0:
-            final_out = result
-            final_out = final_out.unsqueeze(0)
-        else:
-            final_out = torch.cat([final_out, result.unsqueeze(0)], axis=0)
-
-    save_image(final_out, "result.jpg")
+    masked_image = torch.from_numpy(masked_image.astype(np.float32)).clone()
+    masked_image = masked_image.permute(2, 0, 1)
+    masked_image = masked_image.unsqueeze(0)
+    masked_image = masked_image / torch.max(masked_image)
+    save_image(masked_image, "masked_image.png")
 
 
 def train():
@@ -208,10 +130,8 @@ def train():
                 target_tensor.unsqueeze(1).float(), "result/train/target_tensor.png"
             )
 
-            if args.save_segmentation:
-                softmaxed_tensor = F.softmax(predicted_tensor, dim=1)
-                softmaxed_tensor = torch.max(softmaxed_tensor, dim=1)
-                color_map(softmaxed_tensor.indices)
+            # visualization
+            visualize_segmentation(input_tensor, predicted_tensor)
 
             optimizer.zero_grad()
             loss = criterion(predicted_tensor, target_tensor)
