@@ -4,20 +4,21 @@ Train a SegNet model
 
 from __future__ import print_function
 import argparse
-from dataloader.dataset import PascalVOCDataset, NUM_CLASSES
 import os
 import time
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
+from torch.nn import functional as F
+from torch.utils.tensorboard import SummaryWriter
+
+from utils.visualize import *
+from dataloader.dataset import PascalVOCDataset, NUM_CLASSES
+
 from models.unet import UNet
 from models.segnet import SegNet
 from models.pspnet import PSPNet
-from torch.nn import functional as F
-from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
-import numpy as np
-from PIL import Image
 
 writer_train = SummaryWriter(log_dir="./logs/train")
 writer_test = SummaryWriter(log_dir="./logs/test")
@@ -50,51 +51,6 @@ args = parser.parse_args()
 
 
 import matplotlib.pyplot as plt
-
-
-def class_color(id, prob):
-    _hsv = list(hsv[id])
-    # _hsv[2]=random.uniform(0.8, 1)
-    _hsv[2] = prob
-    color = colorsys.hsv_to_rgb(*_hsv)
-    return color
-
-
-def apply_mask(image, mask, color, alpha=0.5):
-    """Apply the given mask to the image."""
-    for c in range(3):
-        image[:, :, c] = np.where(
-            mask == True,
-            image[:, :, c] * (1 - alpha) + alpha * color[c] * 255,
-            image[:, :, c],
-        )
-    return image
-
-
-def visualize_segmentation(input_tensor, predicted_tensor):
-    image = input_tensor.cpu()
-    image = torch.squeeze(image)
-    image = transforms.ToPILImage()(image).convert("RGB")
-    image = np.array(image)
-
-    masks = predicted_tensor.max(1)[1].squeeze(1)
-    masks = masks.cpu()
-    masks = torch.squeeze(masks)
-    masks = masks.numpy().copy()
-    masks = np.array(masks)
-
-    masked_image = image.copy()
-    for i in range(NUM_CLASSES):
-        class_id = i
-        color = np.random.rand(3)
-        mask = masks[:, :] == i
-        masked_image = apply_mask(masked_image, mask, color)
-
-    masked_image = torch.from_numpy(masked_image.astype(np.float32)).clone()
-    masked_image = masked_image.permute(2, 0, 1)
-    masked_image = masked_image.unsqueeze(0)
-    masked_image = masked_image / torch.max(masked_image)
-    save_image(masked_image, "masked_image.png")
 
 
 def train():
