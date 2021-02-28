@@ -49,8 +49,39 @@ parser.add_argument("--save_segmentation", type=bool, default=False)
 
 args = parser.parse_args()
 
+# citysacapes
+# https://github.com/lxtGH/GALD-DGCNet/blob/master/train_distribute.py
+from dataloader.cityscapes import Cityscapes
 
-import matplotlib.pyplot as plt
+args.rgb = 1
+IMG_MEAN = np.array((0.485, 0.456, 0.406), dtype=np.float32)
+IMG_VARS = np.array((0.229, 0.224, 0.225), dtype=np.float32)
+max_iters = 50000 * args.batch_size
+# input_size = 832
+# input_size = 416
+# input_size = 512
+input_size = 768
+h, w = input_size, input_size
+input_size = (h, w)
+args.random_mirror = False
+args.random_scale = False
+
+
+print("args.data_root=", args.data_root)
+print("args.train_path=", args.train_path)
+train_dataset = Cityscapes(
+    args.data_root,
+    args.train_path,
+    max_iters=None,
+    crop_size=input_size,
+    scale=args.random_scale,
+    mirror=args.random_mirror,
+    mean=IMG_MEAN,
+    vars=IMG_VARS,
+)
+
+
+torch.cuda.set_device(0)
 
 
 def train():
@@ -65,29 +96,32 @@ def train():
         idx = 0
 
         for batch in train_dataloader:
+            # torch.set_grad_enabled(True)
             iteration_time = time.time()
-            input_tensor = torch.autograd.Variable(batch["image"])
-            target_tensor = torch.autograd.Variable(batch["mask"])
+            # input_tensor = torch.autograd.Variable(batch["image"])
+            # target_tensor = torch.autograd.Variable(batch["mask"])
+            images, labels = batch
 
             if CUDA:
-                input_tensor = input_tensor.cuda(GPU_ID)
-                target_tensor = target_tensor.cuda(GPU_ID)
+                input_tensor = images.cuda(GPU_ID)
+                target_tensor = labels.cuda(GPU_ID)
 
             predicted_tensor = model(input_tensor)
 
-            save_image(
-                input_tensor / torch.max(input_tensor), "result/train/input_tensor.png"
-            )
-            save_image(
-                predicted_tensor.max(1)[1].unsqueeze(1).float(),
-                "result/train/predicted_tensor.png",
-            )
-            save_image(
-                target_tensor.unsqueeze(1).float(), "result/train/target_tensor.png"
-            )
+            # save_image(
+            #     input_tensor / torch.max(input_tensor), "result/train/input_tensor.png"
+            # )
+            # save_image(
+            #     predicted_tensor.max(1)[1].unsqueeze(1).float(),
+            #     "result/train/predicted_tensor.png",
+            # )
+            # save_image(
+            #     target_tensor.unsqueeze(1).float(), "result/train/target_tensor.png"
+            # )
 
             # visualization
-            visualize_segmentation(input_tensor, predicted_tensor)
+            if idx == 0:
+                visualize_segmentation(input_tensor, predicted_tensor)
 
             optimizer.zero_grad()
             loss = criterion(predicted_tensor, target_tensor)
@@ -105,17 +139,10 @@ def train():
         avg_train_loss = loss_f / len(train_dataloader)
         writer_train.add_scalar("avg_train_loss", avg_train_loss, epoch)
 
-        delta = time.time() - t_start
-        is_better = loss_f < prev_loss
-
-        if is_better:
-            prev_loss = loss_f
-            torch.save(
-                model.state_dict(),
-                os.path.join(args.save_dir, args.model + "_best.pth"),
-            )
-
-        print("Epoch #{}\tLoss: {:.8f}\t Time: {:2f}s".format(epoch + 1, loss_f, delta))
+        torch.save(
+            model.state_dict(),
+            os.path.join(args.save_dir, args.model + str(epoch) + ".pth"),
+        )
 
 
 if __name__ == "__main__":
@@ -127,12 +154,16 @@ if __name__ == "__main__":
     CUDA = args.gpu is not None
     GPU_ID = args.gpu
 
-    train_dataset = PascalVOCDataset(
-        list_file=train_path, img_dir=img_dir, mask_dir=mask_dir
-    )
+    # train_dataset = PascalVOCDataset(
+    #     list_file=train_path, img_dir=img_dir, mask_dir=mask_dir
+    # )
 
     train_dataloader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=4,
+        # pin_memory=True,
     )
 
     if args.model == "unet":
@@ -153,14 +184,15 @@ if __name__ == "__main__":
             pretrained=True,
         )
 
-    class_weights = 1.0 / train_dataset.get_class_probability()
-    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    # class_weights = 1.0 / train_dataset.get_class_probability()
+    # criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    criterion = torch.nn.CrossEntropyLoss()
 
     if CUDA:
-        model = model.cuda(GPU_ID)
+        model = model.cuda(device=GPU_ID)
 
-        class_weights = class_weights.cuda(GPU_ID)
-        criterion = criterion.cuda(GPU_ID)
+        # class_weights = class_weights.cuda(GPU_ID)
+        criterion = criterion.cuda(device=GPU_ID)
 
     if args.checkpoint:
         model.load_state_dict(torch.load(args.checkpoint))
